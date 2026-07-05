@@ -23,9 +23,15 @@ Stuff I'm using to make this work for me:
 - requests
 - browsercookie
 - pywebview
+- stravalib
 - Font Awesome icons
 
 A username and password is required. If you don't log in to Hevy like this I've been told it can be generated with a password reset.
+
+## Privacy / Security
+The app attempts a web login to Hevy and then uses the returned session tokens to access the unpublished Hevy API. Another option 
+presented is to read your Firefox cookie store to find the Hevy auth cookie as a login workaround. It does not upload your 
+browser cookies elsewhere. Session tokens are stored locally in ~/.underthebar/session.json.
 
 ## To run it
 Execute the python file "underthebar.py" (Windows users can download latest pre-built [release](https://github.com/SteveG/underthebar/releases) and run that)
