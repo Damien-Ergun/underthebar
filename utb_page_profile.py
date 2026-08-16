@@ -80,9 +80,10 @@ class Profile(QWidget):
 		img_folder = str(Path.home())+ "/.underthebar/temp/"
 		if not os.path.exists(img_folder):
 			os.makedirs(img_folder)
-		for f in os.listdir(img_folder):
-			if os.stat(os.path.join(img_folder,f)).st_mtime < time.time() - 14 * 86400:
-				os.remove(os.path.join(img_folder,f))
+		# Put the cache clearing back into hevy_api file
+		#for f in os.listdir(img_folder):
+		#	if os.stat(os.path.join(img_folder,f)).st_mtime < time.time() - 14 * 86400:
+		#		os.remove(os.path.join(img_folder,f))
 		session_data = {}
 		if os.path.exists(utb_folder+"/session.json"):	
 			with open(utb_folder+"/session.json", 'r') as file:

@@ -749,10 +749,11 @@ def feed_workouts_paged(start_from, user=None):
 	img_folder = str(Path.home())+ "/.underthebar/temp/"
 	if not os.path.exists(img_folder):
 		os.makedirs(img_folder)
-	# When starting feed from zero we'll delete the old temp files
+	# When starting feed from zero we'll delete the old temp files, 7 day age limit
 	if start_from ==0:
+		print("Clear the old files")
 		for f in os.listdir(img_folder):
-			if os.stat(os.path.join(img_folder,f)).st_mtime < time.time() - 14 * 86400:
+			if os.stat(os.path.join(img_folder,f)).st_mtime < time.time() - 7 * 86400:
 				os.remove(os.path.join(img_folder,f))
 			
 	# Make the headers
