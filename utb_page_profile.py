@@ -14,7 +14,7 @@ import calendar
 import re
 import xml.etree.ElementTree as ET
 
-from PySide6.QtCore import Qt, QSize, QRect, QItemSelectionModel
+from PySide6.QtCore import Qt, QSize, QRect, QItemSelectionModel, QUrl
 from PySide6 import QtSvgWidgets
 from PySide6.QtWidgets import (
     QApplication,
@@ -34,15 +34,24 @@ from PySide6.QtWidgets import (
     QToolButton,
 	QComboBox,
 )
-from PySide6.QtGui import QPalette, QColor, QWindow
+from PySide6.QtGui import QPalette, QColor, QWindow, QDesktopServices
 from PySide6.QtGui import QIcon, QPixmap,QImage, QBrush, QPainter
-
 from PySide6.QtCore import Slot, Signal, QObject, QThreadPool, QRunnable
 
 import hevy_api	
 import textwrap
 import utb_plot_body_measures
+import utb_discussion
 	
+class StaticToggleButton(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+
+    def nextCheckState(self):
+        # Do nothing here to stop the auto-toggle behavior on click
+        pass
+
 		
 class Profile(QWidget):
 
@@ -81,6 +90,7 @@ class Profile(QWidget):
 		else:
 			return 403
 		user_folder = utb_folder + "/user_" + session_data["user-id"]	
+		self.user_folder = user_folder
 		workouts_folder = user_folder + "/workouts"	
 		self.workouts_folder = user_folder + "/workouts"
 		account_data = None
@@ -209,7 +219,8 @@ class Profile(QWidget):
 		self.feedList.setAlternatingRowColors(True)
 		self.feedList.setFocusPolicy(Qt.NoFocus);
 		self.feedList.verticalScrollBar().setSingleStep(15)
-		self.feedList.verticalScrollBar().valueChanged.connect(self.feedScrollChanged) 
+		self.feedList.verticalScrollBar().valueChanged.connect(self.feedScrollChanged)
+		self.feedList.itemDoubleClicked.connect(self.feed_item_doubleclicked)
 		feedlayout.addWidget(self.feedList)
 		
 		bottomlayout.addLayout(feedlayout)
@@ -381,6 +392,8 @@ class Profile(QWidget):
 		
 		self.layout().addLayout(bottomlayout)
 		
+		
+		self.squad_list = None
 		self.feed_last_index = 0
 		
 		self.initialised = True
@@ -846,18 +859,50 @@ class Profile(QWidget):
 		else: # single day selected
 		
 			fancystring = ""
+			the_fancy_strings = []
+			the_comment_buttons = []
+			
 			bodypart_list = []
 			other_bodypart_list = []
 			
 			for file in self.relevant_workout_files[the_date]:
 				with open(self.workouts_folder+"/"+file, 'r') as loadfile:
 					temp_data = json.load(loadfile)
-					fancystring += self.get_fancy_text(temp_data)
+					#fancystring += self.get_fancy_text(temp_data)
+					the_fancy_strings.append(self.get_fancy_text(temp_data))
 					# body picture
 					body_things = self.get_bodyparts(temp_data)
 					bodypart_list = bodypart_list + body_things[0]
 					other_bodypart_list = other_bodypart_list + body_things[1]
 					#print("\n\n"+fancystring)
+					
+					# Comments
+					item = QListWidgetItem()
+					internalWidget = QWidget()
+					internalLayout = QHBoxLayout()
+					commentbutton = StaticToggleButton()
+					commentbutton.setFixedWidth(25)
+					commentbutton.setFixedHeight(25)
+					commentbutton.setIcon(self.loadIcon(self.script_folder+"/icons/comment-solid-full.svg"))
+					commentbutton.setCheckable(True)
+					commentbutton.setChecked(False)
+					commentbutton.clicked.connect(lambda *args, x=temp_data["id"], y=commentbutton: self.comment_button(args, x, y))
+					internalLayout.addWidget(commentbutton)
+					commentcount = len(temp_data["comments"])
+					if commentcount > 0:
+						commentbutton.setChecked(True)
+					commentcounter = QLabel(str(commentcount))
+					internalLayout.addWidget(commentcounter)
+					
+					internalLayout.addStretch()
+					internalLayout.setContentsMargins(0,0,0,0)
+					internalWidget.setLayout(internalLayout)
+					
+					
+					the_comment_buttons.append(internalWidget)
+					
+					
+					
 			self.ownList.clear()
 			#self.ownList.addItem("body here")
 			
@@ -888,7 +933,16 @@ class Profile(QWidget):
 			self.ownList.setItemWidget(bodypicitem,bodypic)
 			
 			
-			self.ownList.addItem(fancystring)
+			#self.ownList.addItem(fancystring)
+			for i in range(len(the_fancy_strings)):#nice_string in the_fancy_strings:
+				self.ownList.addItem(the_fancy_strings[i])
+				#self.ownList.addItem(the_comment_buttons[i])
+				
+				
+				item = QListWidgetItem()
+				item.setSizeHint(QSize(25,25))
+				self.ownList.addItem(item)
+				self.ownList.setItemWidget(item, the_comment_buttons[i])
 					
 	
 	def get_basic_workout_stats(self, workoutjson):
@@ -997,7 +1051,7 @@ class Profile(QWidget):
 				fancystring += "\n"+substring
 			fancystring += "\n"
 		
-		fancystring += "\n"	
+		#fancystring += "\n"	
 		return fancystring
 	
 	# returns true if workout json has filtered item in exercises or bodyparts
@@ -1055,6 +1109,7 @@ class Profile(QWidget):
 	def feed_reload_button(self):
 		self.feed_last_index = 0
 		self.feedList.clear()
+		self.squad_list = None
 		self.feed_load_button()
 		#self.feed_load_button()
 		#self.feed_load_button()
@@ -1066,11 +1121,26 @@ class Profile(QWidget):
 		start_index = self.feed_last_index + 0
 		worker = MyFeedWorker(start_index)
 		
+		# make sure the squad list is loaded
+		if self.squad_list == None:
+			if os.path.exists(self.user_folder+"/squad.json"):	
+				with open(self.user_folder+"/squad.json", 'r') as file:
+					self.squad_list = json.load(file)
+			else:
+				self.squad_list = {"data":[]}
+		
 		### The line below was creating a segmentation fault, found this: https://stackoverflow.com/questions/29123171/segmentation-fault-when-connecting-a-signal-and-a-slot
 		#worker.emitter.done.connect(self.on_feed_worker_done)
 		self.workemit = worker.emitter
 		self.workemit.done.connect(self.on_feed_worker_done)
 		self.pool.start(worker)
+		
+	# Swaps the text and whatsthis text of the particular list item, to swap between short and long text versions
+	def feed_item_doubleclicked(self, item):
+		#print("swapping text")
+		tempText = item.whatsThis()
+		item.setWhatsThis(item.text())
+		item.setText(tempText)
 	
 	@Slot(dict)
 	def on_feed_worker_done(self, returnjson):
@@ -1078,14 +1148,23 @@ class Profile(QWidget):
 		if returnjson != 304:
 			#self.feedList.addItem(json.dumps(returnjson, indent=4, sort_keys=False))
 			for workout in returnjson["data"]["workouts"]:
-				fancystring = workout["username"] + " - " + workout["name"]
+				# Highlight users that are in our squad
+				if workout["username"] in self.squad_list["data"]:
+					fancystring = "• " + workout["username"] + " - " + workout["name"]
+					fancystring_short = "• " + workout["username"] + " - " + workout["name"]
+				else:
+					fancystring = workout["username"] + " - " + workout["name"]
+					fancystring_short = workout["username"] + " - " + workout["name"]
+					
 				workout_date = datetime.datetime.utcfromtimestamp(workout["start_time"])
 				workout_date = workout_date.replace(tzinfo=datetime.timezone.utc).astimezone(tz=None)
 				import platform
 				if platform.system() == "Linux":
-					fancystring += "\n" + workout_date.strftime("%a %b %-d, ") + str(len(workout["exercises"])) + " exercises"
+					fancystring += "\n" + workout_date.strftime("%a %b %-d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises"
+					fancystring_short += "\n" + workout_date.strftime("%a %b %-d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises"
 				else:
-					fancystring += "\n" + workout_date.strftime("%a %b %#d, ") + str(len(workout["exercises"])) + " exercises"
+					fancystring += "\n" + workout_date.strftime("%a %b %#d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises"
+					fancystring_short += "\n" + workout_date.strftime("%a %b %#d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises\n"
 				
 				
 				the_superset_id = None
@@ -1096,12 +1175,16 @@ class Profile(QWidget):
 						if exercise["superset_id"] != the_superset_id:
 							the_superset_id = exercise["superset_id"]
 							fancystring += "\n\nSuper Set "+str(the_superset_id+1)
+							fancystring_short += "\nSuper Set "+str(the_superset_id+1)
 						else:
 							fancystring += "\n"+ss_string
+							#fancystring_short += "\n"+ss_string
 					else:
 						ss_string = ""
 						fancystring += "\n"+ss_string
+						#fancystring_short += "\n"+ss_string
 					fancystring += "\n"+ss_string+"    " + exercise["title"]
+					fancystring_short += "\n"+ss_string+"    " + str(len(exercise["sets"])) + "x " + exercise["title"]
 					
 					has_weight = False
 					has_reps = False
@@ -1150,9 +1233,12 @@ class Profile(QWidget):
 								time_format = "{:02d}:{:02d}:{:02d}".format(h, m, s) 
 							fancystring += time_format+"\t"
 				fancystring += "\n"
+				fancystring_short += "\n"
 				
-				itemtoadd = QListWidgetItem(fancystring)
+				itemtoadd = QListWidgetItem(fancystring_short)
+				itemtoadd.setWhatsThis(fancystring)
 				itemtoadd.setToolTip(textwrap.fill(workout["description"],50))
+				
 				self.feedList.addItem(itemtoadd)
 				#self.feedList.addItem(fancystring)
 				#self.feedList.addItem("")
@@ -1174,18 +1260,60 @@ class Profile(QWidget):
 				#counterLabel.setToolTip('<img src="https://b.thumbs.redditmedia.com/wjrOwbynl7LAxh4UACgPS4MBu3vjUXanM_NBsxixtys.jpg" width="100">')
 				#counterLabel.setToolTip('<img src="test.jpg" width="400">')
 				internalLayout.addWidget(counterLabel)
-				internalLayout.addWidget(QLabel("prop(s)"))
+				#internalLayout.addWidget(QLabel("prop(s)"))
+				
+				# Comments
+				commentbutton = StaticToggleButton()
+				commentbutton.setIcon(self.loadIcon(self.script_folder+"/icons/comment-solid-full.svg"))
+				commentbutton.setCheckable(True)
+				commentbutton.setChecked(False)
+				internalLayout.addWidget(commentbutton)
+				commentcount = len(workout["comments"])
+				if commentcount > 0:
+					commentbutton.setChecked(True)
+				commentcounter = QLabel(str(commentcount))
+				internalLayout.addWidget(commentcounter)
+				
 				# add the workout pics
-				for img_url in workout["image_urls"]:
-					filename = img_url.split("/")[-1]
-					img_folder = str(Path.home())+ "/.underthebar/temp/"
-					#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
-					pic_label = QLabel("Picture ")
-					pic_label.setToolTip('<img src="'+img_folder+filename+'" width="400">')
-					internalLayout.addWidget(pic_label)
+				#for img_url in workout["image_urls"]:
+				#	filename = img_url.split("/")[-1]
+				#	
+				#	img_folder = str(Path.home())+ "/.underthebar/temp/"
+				#	#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
+				#	pic_label = QLabel("Picture ")
+				#	pic_label.setToolTip('<img src="'+img_folder+filename+'" width="400">')
+				#	internalLayout.addWidget(pic_label)
+				
+				for media in workout["media"]:
+					if media["type"] == "image":
+						filename = media["url"].split("/")[-1]
+						img_folder = str(Path.home())+ "/.underthebar/temp/"
+						#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
+						pic_label = QLabel("Picture ")
+						pic_label.setToolTip('<img src="'+img_folder+filename+'" width="400">')
+						internalLayout.addWidget(pic_label)
+					elif media["type"] == "video":
+						filename = media["thumbnail_url"].split("/")[-1]
+						img_folder = str(Path.home())+ "/.underthebar/temp/"
+						#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
+						pic_label = QPushButton("Video↗ ")
+						pic_label.setToolTip('<img src="'+img_folder+filename+'" height="400">')
+						pic_label.setStyleSheet("border: none; padding: 0px; text-align: left;")
+						
+						filename_video = media["url"].split("/")[-1]
+						url = img_folder + filename_video
+						pic_label.clicked.connect(lambda checked=False, val=url: QDesktopServices.openUrl(QUrl.fromLocalFile(val)))
+						
+						internalLayout.addWidget(pic_label)
+						
+				
 				internalLayout.addStretch()
 				internalLayout.setContentsMargins(0,0,0,0)
 				internalWidget.setLayout(internalLayout)
+				
+				
+				likebutton.setFixedWidth(25)
+				commentbutton.setFixedWidth(25)
 				#item.setWidget(internalWidget)
 				#item.setText("\n\"sick workout dude\" - a guy\n\n\"awesome!!!\" - a hot chick")
 				#item.setText(str(workout["like_count"])+ " prop(s)")
@@ -1199,10 +1327,20 @@ class Profile(QWidget):
 				
 				
 				likebutton.clicked.connect(lambda *args, x=workout["id"], y=likebutton, z=counterLabel: self.like_button(args, x,y,z))
+				commentbutton.clicked.connect(lambda *args, x=workout["id"], y=commentbutton: self.comment_button(args, x, y))
 				self.feed_last_index = workout["index"]
 		
 		self.feedreloadbutton.setEnabled(True)
 		self.feedloadbutton.setEnabled(True)
+		
+		if not self.feedList.verticalScrollBar().isVisible() and self.feed_last_index !=0:
+			self.feed_load_button()
+
+		### TEMP TEMP TEMP ###
+		#img_folder = str(Path.home())+ "/.underthebar/temp/"
+		#url = QUrl.fromLocalFile(img_folder+"endobonj-ea1c12b0-1318-4d01-b03c-e4281c1bd0d6.mp4")
+		#QDesktopServices.openUrl(url)
+		
 	
 	def like_button(self, checked, workout_id, button, label):
 		#print(checked, workout_id, button.isChecked())
@@ -1212,6 +1350,12 @@ class Profile(QWidget):
 			self.pool.start(worker)	
 		else:
 			button.setChecked(True) # don't allow unliking
+			
+	def comment_button(self, checked, workout_id, button):
+		#print(checked, workout_id, button.isChecked())
+		dialog = utb_discussion.UTBDiscussion(workout_id)
+		dialog.exec()
+		
 
 	@Slot(QLabel)
 	def on_like_worker_done(self, the_label):

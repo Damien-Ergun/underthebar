@@ -749,10 +749,11 @@ def feed_workouts_paged(start_from, user=None):
 	img_folder = str(Path.home())+ "/.underthebar/temp/"
 	if not os.path.exists(img_folder):
 		os.makedirs(img_folder)
-	# its probably a bit much to do this every time, I'll put it somewhere else.
-	#for f in os.listdir(img_folder):
-	#	if os.stat(os.path.join(img_folder,f)).st_mtime < time.time() - 14 * 86400:
-	#		os.remove(os.path.join(img_folder,f))
+	# When starting feed from zero we'll delete the old temp files
+	if start_from ==0:
+		for f in os.listdir(img_folder):
+			if os.stat(os.path.join(img_folder,f)).st_mtime < time.time() - 14 * 86400:
+				os.remove(os.path.join(img_folder,f))
 			
 	# Make the headers
 	headers = BASIC_HEADERS.copy()
@@ -778,8 +779,12 @@ def feed_workouts_paged(start_from, user=None):
 		# this bit is for downloading feed workout images, request in parallel
 		img_urls = []
 		for workout in data["workouts"]:
-			for img_url in workout["image_urls"]:
-				img_urls.append(img_url)
+			#for img_url in workout["image_urls"]:
+			#	img_urls.append(img_url)
+			for media in workout["media"]:
+				img_urls.append(media["url"])
+				if "thumbnail_url" in media:
+					img_urls.append(media["thumbnail_url"])
 		
 		#with concurrent.futures.ThreadPoolExecutor() as exector : 
 		#	exector.map(download_img, img_urls)
@@ -882,6 +887,91 @@ def like_workout(workout_id, like_it):
 	
 	s = requests.Session()	
 	r = s.post(url, headers=headers)
+	
+	return r.status_code
+
+#
+# Likes a comment
+#
+def like_comment(comment_id):
+	print("like the comment", comment_id)
+	# Make sure user is logged in, have their folder, and auth-token
+	user_data = is_logged_in()
+	if user_data[0] == False:
+		return 403
+	user_folder = user_data[1]
+	auth_token = user_data[2]
+	
+	# Make the headers
+	headers = BASIC_HEADERS.copy()
+	#headers["auth-token"] = auth_token # update for hevy api change
+	headers["Authorization"] = "Bearer "+auth_token	
+	
+	
+	url = "https://api.hevyapp.com/workout_comment/like/"+comment_id
+	
+	s = requests.Session()	
+	r = s.post(url, headers=headers)
+	
+	return r.status_code
+#
+# Downloads a comment thread
+#
+def get_comments(workout_id):
+	# Make sure user is logged in, have their folder, and auth-token
+	user_data = is_logged_in()
+	if user_data[0] == False:
+		return 403
+	user_folder = user_data[1]
+	auth_token = user_data[2]
+	
+	comments_url = "https://api.hevyapp.com/workout_comments/" + workout_id
+	#filename = to_update + ".json"
+
+	# Create headers to be used
+	headers = BASIC_HEADERS.copy()
+	#headers["auth-token"] = auth_token # update for hevy api change
+	headers["Authorization"] = "Bearer "+auth_token	
+	
+	# Now finally do the request for the comment thread. 
+	s = requests.Session()
+	r = s.get(comments_url, headers=headers)
+	print(r.status_code)
+	if r.status_code == 200:
+		data = r.json()
+		
+		#print(data)
+			
+		return data
+	elif r.status_code == 304:
+		return 304
+
+#
+# Post a comment
+#
+def post_comment(workout_id, comment_text, reply_to_id=None):
+		
+	# Make sure user is logged in, have their folder, and auth-token
+	user_data = is_logged_in()
+	if user_data[0] == False:
+		return 403
+	user_folder = user_data[1]
+	auth_token = user_data[2]
+	
+	# Make the headers
+	headers = BASIC_HEADERS.copy()
+	#headers["auth-token"] = auth_token # update for hevy api change
+	headers["Authorization"] = "Bearer "+auth_token	
+	
+	url = "https://api.hevyapp.com/workout_comment"
+	the_json = {"workoutId":workout_id, "comment": comment_text}
+	if reply_to_id:
+		the_json["replyingToCommentId"] = reply_to_id
+
+	
+	s = requests.Session()	
+	r = s.post(url, json=the_json, headers=headers)
+	print("attempted...",r.status_code)
 	
 	return r.status_code
 	

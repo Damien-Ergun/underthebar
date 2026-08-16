@@ -15,7 +15,7 @@ import calendar
 import re
 import xml.etree.ElementTree as ET
 
-from PySide6.QtCore import Qt, QSize, QRect, QItemSelectionModel
+from PySide6.QtCore import Qt, QSize, QRect, QItemSelectionModel, QUrl
 from PySide6 import QtSvgWidgets
 from PySide6.QtWidgets import (
     QApplication,
@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 	QComboBox,
 	QInputDialog
 )
-from PySide6.QtGui import QPalette, QColor, QWindow
+from PySide6.QtGui import QPalette, QColor, QWindow, QDesktopServices
 from PySide6.QtGui import QIcon, QPixmap,QImage, QBrush, QPainter
 
 from PySide6.QtCore import Slot, Signal, QObject, QThreadPool, QRunnable
@@ -45,7 +45,16 @@ from PySide6.QtCore import Slot, Signal, QObject, QThreadPool, QRunnable
 import hevy_api	
 import textwrap
 import utb_plot_body_measures
+import utb_discussion
 	
+class StaticToggleButton(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+
+    def nextCheckState(self):
+        # Do nothing here to stop the auto-toggle behavior on click
+        pass
 		
 class Social(QWidget):
 
@@ -286,6 +295,7 @@ The changes are from when you last reloaded the data using this button"""
 		self.feedList.setFocusPolicy(Qt.NoFocus);
 		self.feedList.verticalScrollBar().setSingleStep(15)
 		self.feedList.verticalScrollBar().valueChanged.connect(self.feedScrollChanged)
+		self.feedList.itemDoubleClicked.connect(self.feed_item_doubleclicked)
 		bottomcornerlayout.addWidget(self.feedList)
 		
 		# Change appearance of scroll bars
@@ -440,20 +450,21 @@ The changes are from when you last reloaded the data using this button"""
 				self.weight_unit = "kg"
 			
 			# Get Following Data
-			following_data = {}
+			following_data = {"data":[],"added":[],"removed":[]}
 			if os.path.exists(user_folder+"/following.json"):	
 				with open(user_folder+"/following.json", 'r') as file:
 					following_data = json.load(file)
 			# Get Follower Data
-			follower_data = {}
+			follower_data = {"data":[],"added":[],"removed":[]}
 			if os.path.exists(user_folder+"/follower.json"):	
 				with open(user_folder+"/follower.json", 'r') as file:
 					follower_data = json.load(file)
 			# Do the Squad List  ▷▶•‣
-			squad_data = {}
+			squad_data = {"data":{},"added":[],"removed":[]}
 			if os.path.exists(user_folder+"/squad.json"):	
 				with open(user_folder+"/squad.json", 'r') as file:
 					squad_data = json.load(file)
+			self.squad_data = squad_data
 			# Build Mutual Friend List
 			mutual_friends = []
 			following_only = []
@@ -478,7 +489,7 @@ The changes are from when you last reloaded the data using this button"""
 			print(len(mutual_friends),"mutual friends,",len(following_only),"you follow, and",len(follower_only),"follow you.")
 			
 			# Suggested Users
-			suggested_data = {}
+			suggested_data = {"data":[]}
 			if os.path.exists(user_folder+"/suggested_users.json"):	
 				with open(user_folder+"/suggested_users.json", 'r') as file:
 					suggested_data = json.load(file)
@@ -590,18 +601,25 @@ The changes are from when you last reloaded the data using this button"""
 			label.setTextAlignment(Qt.AlignCenter)
 			self.squadList.addItem(label)
 			squad_list = []
+			bins = [100, 90, 50, 20,0,0]
 			last_score = None
+			bin_index = 0
 			for user in squad_data["data"].keys():
 				score = squad_data["data"][user]*10
-				if score != last_score:
+				#if score != last_score:
+				#	print(score)
+				if score != last_score and score == bins[bin_index]:
+					print(score, bin_index, len(squad_list))
 					self.squadList.addItems(sorted(squad_list))
 					squad_list = []
 					
-					label = QListWidgetItem("------"+str(score)+"%------")
+					#label = QListWidgetItem("------"+str(score)+"%------")
+					label = QListWidgetItem("------ "+str(bins[bin_index])+"%------")
 					label.setTextAlignment(Qt.AlignCenter)
 					self.squadList.addItem(label)
 					
 					last_score = score
+					bin_index += 1
 				if squad_data["following_data"][user] == "not-following":
 					squad_list.append(user + " (not following)")
 					#self.squadList.addItem(user + " (not following)")
@@ -609,6 +627,7 @@ The changes are from when you last reloaded the data using this button"""
 					squad_list.append(user)
 					#self.squadList.addItem(user)
 			if len(squad_list) > 0:
+				print(score, bin_index, len(squad_list))
 				self.squadList.addItems(sorted(squad_list))
 				squad_list = []
 			#self.squadList.addItems(squad_list)
@@ -1370,7 +1389,7 @@ The changes are from when you last reloaded the data using this button"""
 	@Slot(list)
 	def on_search_worker_done(self, the_data):
 		print("all the work is done")
-		print(the_data)
+		#print(the_data)
 		
 		the_users = []
 		for user in the_data:
@@ -1396,10 +1415,13 @@ The changes are from when you last reloaded the data using this button"""
 		if "description" in the_data.keys():
 			the_string += "\n\n" + textwrap.fill(the_data["description"],50)
 		the_string += "\n\nFollows You: " + str(the_data["is_followed_by_requester"])
-		the_string += "\nYou Follow: " + str(the_data["following_status"]=="following")
-		the_string += "\nWorkouts: " + str(the_data["workout_count"])
+		the_string += " | You Follow: " + str(the_data["following_status"]=="following")
 		the_string += "\nFollowers: " + str(the_data["follower_count"])
-		the_string += "\nFollows: " + str(the_data["following_count"])
+		the_string += " | Follows: " + str(the_data["following_count"])
+		the_string += "\nWorkouts: " + str(the_data["workout_count"])
+		
+		if the_data["username"] in self.squad_data["data"]:
+			the_string += " | Squad Score: " + str(self.squad_data["data"][the_data["username"]]*10) + "%"
 		#print(the_string)
 		self.piclabel.setToolTip(the_string)
 		
@@ -1429,7 +1451,12 @@ The changes are from when you last reloaded the data using this button"""
 			pixmap = QPixmap(script_folder+"/icons/user-solid.svg").scaled(300,300)
 			self.piclabel.setPixmap(pixmap)
 
-	
+	# Swaps the text and whatsthis text of the particular list item, to swap between short and long text versions
+	def feed_item_doubleclicked(self, item):
+		#print("swapping text")
+		tempText = item.whatsThis()
+		item.setWhatsThis(item.text())
+		item.setText(tempText)
 	
 	@Slot(dict)
 	def on_feed_worker_done(self, returnjson):
@@ -1439,13 +1466,17 @@ The changes are from when you last reloaded the data using this button"""
 			for workout in returnjson["data"]["workouts"]:
 				#fancystring = workout["username"] + " - " + workout["name"]
 				fancystring = workout["name"]
+				fancystring_short = workout["name"]
+				
 				workout_date = datetime.datetime.utcfromtimestamp(workout["start_time"])
 				workout_date = workout_date.replace(tzinfo=datetime.timezone.utc).astimezone(tz=None)
 				import platform
 				if platform.system() == "Linux":
-					fancystring += "\n" + workout_date.strftime("%a %b %-d, ") + str(len(workout["exercises"])) + " exercises"
+					fancystring += "\n" + workout_date.strftime("%a %b %-d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises"
+					fancystring_short += "\n" + workout_date.strftime("%a %b %-d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises"
 				else:
-					fancystring += "\n" + workout_date.strftime("%a %b %#d, ") + str(len(workout["exercises"])) + " exercises"
+					fancystring += "\n" + workout_date.strftime("%a %b %#d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises"
+					fancystring_short += "\n" + workout_date.strftime("%a %b %#d %I%p, ").replace(" 0"," ") + str(len(workout["exercises"])) + " exercises\n"
 				
 				
 				the_superset_id = None
@@ -1456,12 +1487,14 @@ The changes are from when you last reloaded the data using this button"""
 						if exercise["superset_id"] != the_superset_id:
 							the_superset_id = exercise["superset_id"]
 							fancystring += "\n\nSuper Set "+str(the_superset_id+1)
+							fancystring_short += "\nSuper Set "+str(the_superset_id+1)
 						else:
 							fancystring += "\n"+ss_string
 					else:
 						ss_string = ""
 						fancystring += "\n"+ss_string
 					fancystring += "\n"+ss_string+"    " + exercise["title"]
+					fancystring_short += "\n"+ss_string+"    " + str(len(exercise["sets"])) + "x " + exercise["title"]
 					
 					has_weight = False
 					has_reps = False
@@ -1510,8 +1543,10 @@ The changes are from when you last reloaded the data using this button"""
 								time_format = "{:02d}:{:02d}:{:02d}".format(h, m, s) 
 							fancystring += time_format+"\t"
 				fancystring += "\n"
+				fancystring_short += "\n"
 				
-				itemtoadd = QListWidgetItem(fancystring)
+				itemtoadd = QListWidgetItem(fancystring_short)
+				itemtoadd.setWhatsThis(fancystring)
 				itemtoadd.setToolTip(textwrap.fill(workout["description"],50))
 				self.feedList.addItem(itemtoadd)
 				#self.feedList.addItem(fancystring)
@@ -1534,18 +1569,59 @@ The changes are from when you last reloaded the data using this button"""
 				#counterLabel.setToolTip('<img src="https://b.thumbs.redditmedia.com/wjrOwbynl7LAxh4UACgPS4MBu3vjUXanM_NBsxixtys.jpg" width="100">')
 				#counterLabel.setToolTip('<img src="test.jpg" width="400">')
 				internalLayout.addWidget(counterLabel)
-				internalLayout.addWidget(QLabel("prop(s)"))
+				#internalLayout.addWidget(QLabel("prop(s)"))
+				
+				# Comments
+				commentbutton = StaticToggleButton()
+				commentbutton.setIcon(self.loadIcon(self.script_folder+"/icons/comment-solid-full.svg"))
+				commentbutton.setCheckable(True)
+				commentbutton.setChecked(False)
+				internalLayout.addWidget(commentbutton)
+				commentcount = len(workout["comments"])
+				if commentcount > 0:
+					commentbutton.setChecked(True)
+				commentcounter = QLabel(str(commentcount))
+				internalLayout.addWidget(commentcounter)
+				
+				
 				# add the workout pics
-				for img_url in workout["image_urls"]:
-					filename = img_url.split("/")[-1]
-					img_folder = str(Path.home())+ "/.underthebar/temp/"
-					#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
-					pic_label = QLabel("Picture ")
-					pic_label.setToolTip('<img src="'+img_folder+filename+'" width="400">')
-					internalLayout.addWidget(pic_label)
+				#for img_url in workout["image_urls"]:
+				#	filename = img_url.split("/")[-1]
+				#	img_folder = str(Path.home())+ "/.underthebar/temp/"
+				#	#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
+				#	pic_label = QLabel("Picture ")
+				#	pic_label.setToolTip('<img src="'+img_folder+filename+'" width="400">')
+				#	internalLayout.addWidget(pic_label)
+					
+				for media in workout["media"]:
+					if media["type"] == "image":
+						filename = media["url"].split("/")[-1]
+						img_folder = str(Path.home())+ "/.underthebar/temp/"
+						#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
+						pic_label = QLabel("Picture ")
+						pic_label.setToolTip('<img src="'+img_folder+filename+'" width="400">')
+						internalLayout.addWidget(pic_label)
+					elif media["type"] == "video":
+						filename = media["thumbnail_url"].split("/")[-1]
+						img_folder = str(Path.home())+ "/.underthebar/temp/"
+						#if os.path.exists(img_folder+filename): # following three lines were under this if, but now image might not be downloaded immediately
+						pic_label = QPushButton("Video↗ ")
+						pic_label.setToolTip('<img src="'+img_folder+filename+'" height="400">')
+						pic_label.setStyleSheet("border: none; padding: 0px; text-align: left;")
+						
+						filename_video = media["url"].split("/")[-1]
+						url = img_folder + filename_video
+						pic_label.clicked.connect(lambda checked=False, val=url: QDesktopServices.openUrl(QUrl.fromLocalFile(val)))
+
+						internalLayout.addWidget(pic_label)
+					
 				internalLayout.addStretch()
 				internalLayout.setContentsMargins(0,0,0,0)
 				internalWidget.setLayout(internalLayout)
+				
+				
+				likebutton.setFixedWidth(25)
+				commentbutton.setFixedWidth(25)
 				#item.setWidget(internalWidget)
 				#item.setText("\n\"sick workout dude\" - a guy\n\n\"awesome!!!\" - a hot chick")
 				#item.setText(str(workout["like_count"])+ " prop(s)")
@@ -1559,6 +1635,7 @@ The changes are from when you last reloaded the data using this button"""
 				
 				
 				likebutton.clicked.connect(lambda *args, x=workout["id"], y=likebutton, z=counterLabel: self.like_button(args, x,y,z))
+				commentbutton.clicked.connect(lambda *args, x=workout["id"], y=commentbutton: self.comment_button(args, x, y))
 				#self.feed_last_index = workout["index"]
 				self.feed_last_index +=1 # For other users its a workouts offset rather than the index
 		
@@ -1574,6 +1651,11 @@ The changes are from when you last reloaded the data using this button"""
 			self.pool.start(worker)	
 		else:
 			button.setChecked(True) # don't allow unliking
+			
+	def comment_button(self, checked, workout_id, button):
+		#print(checked, workout_id, button.isChecked())
+		dialog = utb_discussion.UTBDiscussion(workout_id)
+		dialog.exec()
 			
 	def search_button(self):
 		print("search")
