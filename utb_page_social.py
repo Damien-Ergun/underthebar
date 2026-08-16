@@ -997,7 +997,9 @@ The changes are from when you last reloaded the data using this button"""
 		print("friendListRowChanged", row, self.friendList.item(row).text())
 		the_text = str(self.friendList.item(row).text())
 		self.followList.clearSelection()
+		self.followList.selectionModel().clearCurrentIndex()
 		self.squadList.clearSelection()
+		self.squadList.selectionModel().clearCurrentIndex()
 		if the_text.startswith("------"):
 			return
 		if the_text.startswith("• "):
@@ -1012,7 +1014,9 @@ The changes are from when you last reloaded the data using this button"""
 			return
 		print("followListRowChanged", row, self.followList.item(row).text())
 		self.friendList.clearSelection()
+		self.friendList.selectionModel().clearCurrentIndex()
 		self.squadList.clearSelection()
+		self.squadList.selectionModel().clearCurrentIndex()
 		the_text = str(self.followList.item(row).text())
 		if the_text.startswith("• "):
 			the_text = the_text[2:]
@@ -1027,7 +1031,9 @@ The changes are from when you last reloaded the data using this button"""
 			return
 		print("squadListRowChanged", row, self.squadList.item(row).text())
 		self.followList.clearSelection()
+		self.followList.selectionModel().clearCurrentIndex()
 		self.friendList.clearSelection()
+		self.friendList.selectionModel().clearCurrentIndex()
 		the_text = str(self.squadList.item(row).text())
 		print(the_text,the_text.startswith("------"),the_text.endswith(" (not following)"))
 		if the_text.startswith("------"):
