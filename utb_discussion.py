@@ -167,6 +167,8 @@ class NetworkAvatar(QLabel):
         # 4. Check if the image filename already exists locally on disk
         if os.path.exists(self.local_cache_path):
             self.load_and_apply_avatar(self.local_cache_path)
+            # If we already have the file, we'll "touch" it to reset its cache period
+            Path(self.local_cache_path).touch()
         else:
             # Cache miss: Trigger background network download request
             self.manager = QNetworkAccessManager(self)

@@ -746,12 +746,21 @@ def feed_workouts_paged(start_from, user=None):
 	auth_token = user_data[2]
 	
 	# workout image stuff, set folder, delete old images
+	cache_check = False
 	img_folder = str(Path.home())+ "/.underthebar/temp/"
 	if not os.path.exists(img_folder):
 		os.makedirs(img_folder)
+		
+	# Use ".cache" file to record when we last did a cache clear out, once a day is enough
+	if not os.path.exists(os.path.join(img_folder, ".cache")):
+		Path(os.path.join(img_folder, ".cache")).touch()
+	if os.stat(os.path.join(img_folder,".cache")).st_mtime < time.time() - 1 * 86400:
+		cache_check = True
+	
 	# When starting feed from zero we'll delete the old temp files, 7 day age limit
-	if start_from ==0:
+	if start_from ==0 and cache_check==True:
 		print("Clear the old files")
+		Path(os.path.join(img_folder, ".cache")).touch()
 		for f in os.listdir(img_folder):
 			if os.stat(os.path.join(img_folder,f)).st_mtime < time.time() - 7 * 86400:
 				os.remove(os.path.join(img_folder,f))
@@ -811,6 +820,10 @@ def download_img(img_url):
 				shutil.copyfileobj(response.raw, out_file)
 			del response
 			print("end_img: "+file_name)
+		else:
+			# If we already have the file, we'll "touch" it to reset its cache period
+			Path(os.path.join(img_folder, file_name)).touch()
+			print("touched: "+file_name)
 	except Exception as e:
 		print(e)
 
@@ -854,6 +867,10 @@ def get_user_profile(the_user):
 						with open(img_folder+file_name, 'wb') as out_file:
 							shutil.copyfileobj(response.raw, out_file)
 					print("fetched profile pic", file_name)
+				else:
+					# If we already have the file, we'll "touch" it to reset its cache period
+					Path(os.path.join(img_folder, file_name)).touch()
+					print("touched: "+file_name)
 		except:	
 			pass
 			
