@@ -26,6 +26,9 @@ from PySide6.QtCore import Slot, Signal, QObject, QThreadPool, QRunnable
 import hevy_api	
 import strava_api
 import utb_prs
+import requests
+
+from __init__ import __version__
 
 #
 # This view provides means to adjust settings and/or interact with the Hevy API
@@ -156,14 +159,27 @@ class Setting(QWidget):
 		self.stravaimportstateLabel.setFixedWidth(200)
 		workoutsyncgrid.addWidget(self.stravaimportstateLabel,3,2)
 		
+		# Check version button
+		check_version_label = QLabel("check version")
+		check_version_label.setFixedWidth(200)
+		workoutsyncgrid.addWidget(check_version_label, 4,0)
+		self.check_version_btn = QPushButton()
+		self.check_version_btn.setIcon(self.loadIcon(self.script_folder+"/icons/cloud-arrow-down-solid.svg"))
+		self.check_version_btn.setIconSize(QSize(24,24))
+		self.check_version_btn.clicked.connect(lambda *args, x="check_version": self.batch_button_pushed(x))
+		workoutsyncgrid.addWidget(self.check_version_btn,4,1)
+		self.check_version_output_label = QLabel("Running: " + __version__ + "\nGithub Release: ")
+		self.check_version_output_label.setFixedWidth(200)
+		workoutsyncgrid.addWidget(self.check_version_output_label,4,2)
+		
 		
 		# Log out and quit button
 		log_out_label = QLabel("Logout and Quit")
 		log_out_label.setFixedWidth(200)
-		workoutsyncgrid.addWidget(log_out_label, 4,0)
+		workoutsyncgrid.addWidget(log_out_label, 5,0)
 		self.log_out_button = QPushButton("Logout\nand Quit")
 		self.log_out_button.clicked.connect(self.log_out_quit)
-		workoutsyncgrid.addWidget(self.log_out_button,4,1)
+		workoutsyncgrid.addWidget(self.log_out_button,5,1)
 		
 		detailslayout.addLayout(workoutsyncgrid)
 		#detailslayout.addStretch()
@@ -213,6 +229,12 @@ class Setting(QWidget):
 			self.stravaimportbtn.setEnabled(False)
 			#self.workoutsyncbtn.setEnabled(False)
 			self.stravaimportstateLabel.setText("importing...")
+		elif name == "check_version":
+			self.check_version_btn.setIcon(self.loadIcon(self.script_folder+"/icons/spinner-solid.svg"))
+			self.check_version_btn.setIconSize(QSize(24,24))
+			self.check_version_btn.setEnabled(False)
+			#self.workoutsyncbtn.setEnabled(False)
+			self.check_version_output_label.setText("Running: " + __version__ + "\nGithub Release: "+"checking...")
 		#self.launch_threadpool()
 		worker = MyBatchWorker(name,0)
 		worker.emitter.done.connect(self.on_batch_worker_done)
@@ -283,6 +305,17 @@ class Setting(QWidget):
 					self.stravaimportstateLabel.setText("API details not found")
 				else:
 					self.stravaimportstateLabel.setText("failed for some reason")
+			elif worker.startswith( "check_version"):
+				self.check_version_btn.setIcon(self.loadIcon(self.script_folder+"/icons/cloud-arrow-down-solid.svg"))
+				self.check_version_btn.setIconSize(QSize(24,24))
+				#self.workoutsyncbtn.setEnabled(True)
+				self.check_version_btn.setEnabled(True)
+				if return_code ==200:
+					self.check_version_output_label.setText("Running: " + __version__ + "\nGithub Release: "+worker[13:])
+				elif return_code == 404:
+					self.check_version_output_label.setText("API details not found\n")
+				else:
+					self.check_version_output_label.setText("failed for some reason\n")
 		
 
 		
@@ -296,6 +329,8 @@ class Setting(QWidget):
 		qp.end()
 		ic = QIcon(img)
 		return ic
+		
+
 
 
 class MyEmitter(QObject):
@@ -342,6 +377,13 @@ class MyBatchWorker(QRunnable):
 					stravasuccess = strava_api.do_the_thing()
 					print("finished the thing")
 					status = (stravasuccess, False)
+				elif self.name == "check_version":
+					version = self.check_version()
+					if str(version).startswith("v"): # We start our versions with "v", e.g. v25.1
+						self.name += version
+						status = (200, False)
+					else:
+						status = (version, False)
 			except:
 				print("exception")
 				self.emitter.done.emit(str(self.name),0,False)
@@ -350,6 +392,38 @@ class MyBatchWorker(QRunnable):
 			keepGoing = status[1]
 		#print(f"{self.name} api caller finishing up -> emit signal.")
 		#self.emitter.done.emit(str(self.name),status[0],status[1])
+		
+	def check_version(self):
+		url = "https://api.github.com/repos/SteveG/underthebar/releases/latest"
+		
+		# Optional: Include a User-Agent header as recommended by the GitHub API
+		headers = {"User-Agent": "Python-Version-Checker"}
+		
+		try:
+			response = requests.get(url, headers=headers)
+			
+			# Handle 404 if no releases exist or 403 if rate-limited
+			if response.status_code == 200:
+				release_data = response.json()
+				
+				# Extract the release tag name (e.g., "v1.1.0")
+				latest_version = release_data["tag_name"]
+				
+				print(f"Current version: {__version__}")
+				print(f"Latest version on GitHub: {latest_version}")
+				
+				return latest_version
+			elif response.status_code == 404:
+				print("No releases found for this repository.")
+				return 404
+			else:
+				print(f"Failed to check updates. Status code: {response.status_code}")
+				return response.status_code
+				
+				
+		except requests.exceptions.RequestException as e:
+			print(f"An error occurred while connecting to GitHub: {e}")
+			return 404
 
 if __name__ == "__main__":
 	app = QApplication(sys.argv)
